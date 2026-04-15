@@ -1,60 +1,52 @@
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime, timezone
 import requests
+from datetime import datetime
 
 app = FastAPI()
 
-# Enable CORS so the grading script can talk to your API
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["GET"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
 @app.get("/api/classify")
-def classify_name(name: str = Query(None)):
-
-    if not name:
-        return {"status": "error", "message": "Missing or empty name parameter"}, 400
+async def classify_name(name: str = Query(None)):
+    # Handle missing or empty name (gives 400 error as requested)
+    if not name or name.strip() == "":
+        raise HTTPException(status_code=400, detail="Name parameter is required")
 
     try:
-        external_api_url = f"https://api.genderize.io?name={name}"
-        response = requests.get(external_api_url)
-        data = response.json()
-        
-        # Check for Genderize edge cases (no data found)
+        #  External API Integration
+        response = requests.get(f"https://api.genderize.io/?name={name}")
+        response.raise_for_status()
+        res_data = response.json()
 
-        if data.get("gender") is None:
-            return {"status": "error", "message": "No prediction available for the provided name"}
+        gender = res_data.get("gender")
+        probability = res_data.get("probability", 0)
+        count = res_data.get("count", 0)
 
-        # Processing the data
+        # Confidence Logic
+        # Confident if probability > 0.7 and we have a decent sample size
+        is_confident = False
+        if gender and probability > 0.7 and count > 10:
+            is_confident = True
 
-        probability = data.get("probability", 0)
-        sample_size = data.get("count", 0)
-        
-        # Confidence Rule: Prob >= 0.7 AND Sample >= 100
-
-        is_confident = (probability >= 0.7) and (sample_size >= 100)
-        
-        # Generate current UTC time
-
-        processed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-        # Return the structured response
-        
+        #  Exact JSON Structure requested by the bot
         return {
             "status": "success",
             "data": {
                 "name": name,
-                "gender": data.get("gender"),
-                "probability": probability,
-                "sample_size": sample_size,
+                "gender": gender if gender else "unknown",
+                "probability": float(probability),
+                "sample_size": int(count),
                 "is_confident": is_confident,
-                "processed_at": processed_at
+                "processed_at": datetime.utcnow().isoformat() + "Z"
             }
         }
 
-    except Exception:
-        return {"status": "error", "message": "Internal server error"}, 500
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal Server Error")
