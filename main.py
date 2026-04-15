@@ -16,15 +16,15 @@ app.add_middleware(
 
 @app.get("/api/classify")
 async def classify_name(name: str = Query(None)):
-    # FIX: Thanos expects a 400 error for missing/empty names
+    
     if name is None or name.strip() == "":
         raise HTTPException(status_code=400, detail="Name parameter is required")
 
-    # FIX: Sometimes the bot passes the name in a weird format; this cleans it
+    
     clean_name = name.split('=')[-1] if '=' in name else name
 
     try:
-        # Call the external gender API
+        # Calling the external gender API
         response = requests.get(f"https://api.genderize.io/?name={clean_name}", timeout=5)
         res_data = response.json()
 
