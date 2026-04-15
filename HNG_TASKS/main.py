@@ -19,7 +19,7 @@ async def classify_name(name: str = Query(None)):
     if not name or name.strip() == "":
         raise HTTPException(status_code=400, detail="Name parameter is required")
     
-    # ... rest of your code ...
+    
 
     # FIX: Sometimes the bot passes the name in a weird format; this cleans it
     clean_name = name.split('=')[-1] if '=' in name else name
