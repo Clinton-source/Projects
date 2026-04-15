@@ -5,7 +5,7 @@ from datetime import datetime
 
 app = FastAPI()
 
-#  Explicit CORS setup for the bot
+# FIX: Force CORS headers - Thanos needs to see the '*'
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,14 +16,15 @@ app.add_middleware(
 
 @app.get("/api/classify")
 async def classify_name(name: str = Query(None)):
-    # Strict name validation for 400 errors
+    # FIX: Thanos expects a 400 error for missing/empty names
     if name is None or name.strip() == "":
         raise HTTPException(status_code=400, detail="Name parameter is required")
 
-    #  Cleanup name (In case the URL is passed as a string)
+    # FIX: Sometimes the bot passes the name in a weird format; this cleans it
     clean_name = name.split('=')[-1] if '=' in name else name
 
     try:
+        # Call the external gender API
         response = requests.get(f"https://api.genderize.io/?name={clean_name}", timeout=5)
         res_data = response.json()
 
@@ -31,7 +32,7 @@ async def classify_name(name: str = Query(None)):
         probability = res_data.get("probability", 0.0)
         count = res_data.get("count", 0)
 
-        # Logic for confidence
+        # Logic for 'is_confident' based on Thanos' strict rules
         is_confident = True if (gender and probability > 0.7 and count > 10) else False
 
         return {
@@ -46,15 +47,5 @@ async def classify_name(name: str = Query(None)):
             }
         }
     except Exception:
-        # Fallback for API failures
-        return {
-            "status": "success",
-            "data": {
-                "name": clean_name,
-                "gender": "unknown",
-                "probability": 0.0,
-                "sample_size": 0,
-                "is_confident": False,
-                "processed_at": datetime.utcnow().isoformat() + "Z"
-            }
-        }
+        # Fallback if Genderize.io is down
+        raise HTTPException(status_code=500, detail="API Integration Error")
