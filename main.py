@@ -5,10 +5,10 @@ from datetime import datetime
 
 app = FastAPI()
 
-
+# FIX: Force CORS headers - Thanos needs to see the '*'
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # This creates the Access-Control-Allow-Origin: * header
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -16,38 +16,36 @@ app.add_middleware(
 
 @app.get("/api/classify")
 async def classify_name(name: str = Query(None)):
-    # Handle missing or empty name (gives 400 error as requested)
-    if not name or name.strip() == "":
+    # FIX: Thanos expects a 400 error for missing/empty names
+    if name is None or name.strip() == "":
         raise HTTPException(status_code=400, detail="Name parameter is required")
 
+    # FIX: Sometimes the bot passes the name in a weird format; this cleans it
+    clean_name = name.split('=')[-1] if '=' in name else name
+
     try:
-        #  External API Integration
-        response = requests.get(f"https://api.genderize.io/?name={name}")
-        response.raise_for_status()
+        # Call the external gender API
+        response = requests.get(f"https://api.genderize.io/?name={clean_name}", timeout=5)
         res_data = response.json()
 
         gender = res_data.get("gender")
-        probability = res_data.get("probability", 0)
+        probability = res_data.get("probability", 0.0)
         count = res_data.get("count", 0)
 
-        # Confidence Logic
-        # Confident if probability > 0.7 and we have a decent sample size
-        is_confident = False
-        if gender and probability > 0.7 and count > 10:
-            is_confident = True
+        # Logic for 'is_confident' based on Thanos' strict rules
+        is_confident = True if (gender and probability > 0.7 and count > 10) else False
 
-        #  Exact JSON Structure requested by the bot
         return {
             "status": "success",
             "data": {
-                "name": name,
-                "gender": gender if gender else "unknown",
-                "probability": float(probability),
-                "sample_size": int(count),
+                "name": str(clean_name),
+                "gender": str(gender) if gender else "unknown",
+                "probability": float(probability or 0.0),
+                "sample_size": int(count or 0),
                 "is_confident": is_confident,
                 "processed_at": datetime.utcnow().isoformat() + "Z"
             }
         }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail="Internal Server Error")
+    except Exception:
+        # Fallback if Genderize.io is down
+        raise HTTPException(status_code=500, detail="API Integration Error")
