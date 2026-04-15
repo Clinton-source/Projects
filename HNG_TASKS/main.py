@@ -1,11 +1,11 @@
-from fastapi import FastAPI, Query, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 import requests
 from datetime import datetime
+from fastapi import FastAPI, Query, HTTPException
+from fastapi.middleware.cors import CORSMiddleware  # Check this import!
 
 app = FastAPI()
 
-# FIX: Force CORS headers - Thanos needs to see the '*'
+# THIS BLOCK MUST BE BEFORE ANY @app.get ROUTES
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,9 +16,10 @@ app.add_middleware(
 
 @app.get("/api/classify")
 async def classify_name(name: str = Query(None)):
-    # FIX: Thanos expects a 400 error for missing/empty names
-    if name is None or name.strip() == "":
+    if not name or name.strip() == "":
         raise HTTPException(status_code=400, detail="Name parameter is required")
+    
+    # ... rest of your code ...
 
     # FIX: Sometimes the bot passes the name in a weird format; this cleans it
     clean_name = name.split('=')[-1] if '=' in name else name
